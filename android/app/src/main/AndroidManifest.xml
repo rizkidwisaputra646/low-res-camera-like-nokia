@@ -11,7 +11,7 @@
         android:maxSdkVersion="32" />
 
     <application
-        android:label="Nokia Absensi"
+        android:label="Kamera Low Res"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         
