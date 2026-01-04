@@ -315,7 +315,7 @@ class _NokiaAndroidCameraState extends State<NokiaAndroidCamera> with WidgetsBin
         final path = '${tempDir.path}/NOKIA_${DateTime.now().millisecondsSinceEpoch}.jpg';
         await File(path).writeAsBytes(img.encodeJpg(resized, quality: 90));
         await Gal.putImage(path);
-        _showMsg("Foto Tersimpan!");
+        _showMsg("Foto udah kesimpen tuh, coba cek");
         setState(() { _lastMediaPath = path; }); 
       }
     } catch (e) { _showMsg("Gagal Foto: $e"); }
@@ -351,7 +351,7 @@ class _NokiaAndroidCameraState extends State<NokiaAndroidCamera> with WidgetsBin
           final returnCode = await session.getReturnCode();
           if (ReturnCode.isSuccess(returnCode)) {
             await Gal.putVideo(outputPath);
-            _showMsg("Video Burik Tersimpan!");
+            _showMsg("done bang,coba cek galeri");
             setState(() { _lastMediaPath = outputPath; });
           }
           if (await File(inputPath).exists()) await File(inputPath).delete();
