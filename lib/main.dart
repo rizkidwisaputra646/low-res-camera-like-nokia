@@ -1,11 +1,16 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as img; 
 import 'package:path_provider/path_provider.dart';
 import 'package:gal/gal.dart';
 import 'package:permission_handler/permission_handler.dart';
+
+// Import FFmpeg Kit New
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,7 +47,12 @@ class _NokiaAndroidCameraState extends State<NokiaAndroidCamera> {
   Future<void> _initCam() async {
     await [Permission.camera, Permission.microphone, Permission.photos, Permission.videos].request();
     if (_controller != null) await _controller!.dispose();
-    _controller = CameraController(widget.cameras[_camIdx], ResolutionPreset.low);
+    
+    _controller = CameraController(
+      widget.cameras[_camIdx], 
+      ResolutionPreset.low, // Dasar resolusi rendah
+    );
+
     try {
       await _controller!.initialize();
       if (mounted) setState(() {});
@@ -57,14 +67,23 @@ class _NokiaAndroidCameraState extends State<NokiaAndroidCamera> {
       return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.green)));
     }
 
+    // Logika Mirror untuk kamera depan
+    bool isFrontCam = widget.cameras[_camIdx].lensDirection == CameraLensDirection.front;
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Viewfinder
-          Positioned.fill(child: CameraPreview(_controller!)),
-          
-          // Top Bar: Resolusi
+          // 1. Viewfinder dengan fitur MIRROR
+          Positioned.fill(
+            child: Transform(
+              alignment: Alignment.center,
+              transform: isFrontCam ? Matrix4.rotationY(math.pi) : Matrix4.identity(),
+              child: CameraPreview(_controller!),
+            ),
+          ),
+
+          // 2. Top Bar: Resolusi
           Positioned(
             top: 50, left: 0, right: 0,
             child: Row(
@@ -76,7 +95,7 @@ class _NokiaAndroidCameraState extends State<NokiaAndroidCamera> {
             ),
           ),
 
-          // Bottom UI (Android Camera Style)
+          // 3. Bottom UI (Android Camera Style)
           Positioned(
             bottom: 0, left: 0, right: 0,
             child: Container(
@@ -100,7 +119,7 @@ class _NokiaAndroidCameraState extends State<NokiaAndroidCamera> {
                       const Icon(Icons.photo_library, size: 28),
                       _shutter(),
                       IconButton(
-                        icon: const Icon(Icons.flip_camera_android),
+                        icon: const Icon(Icons.flip_camera_android, color: Colors.green),
                         onPressed: () { _camIdx = _camIdx == 0 ? 1 : 0; _initCam(); },
                       ),
                     ],
@@ -109,7 +128,22 @@ class _NokiaAndroidCameraState extends State<NokiaAndroidCamera> {
               ),
             ),
           ),
-          if (_isProcessing) const Center(child: CircularProgressIndicator(color: Colors.green)),
+          
+          // Loader saat FFmpeg sedang bekerja
+          if (_isProcessing) 
+            Container(
+              color: Colors.black87,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    CircularProgressIndicator(color: Colors.green),
+                    SizedBox(height: 15),
+                    Text("MENGOLAH VIDEO BURIK...", style: TextStyle(fontFamily: 'monospace')),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -167,7 +201,7 @@ class _NokiaAndroidCameraState extends State<NokiaAndroidCamera> {
     finally { setState(() => _isProcessing = false); }
   }
 
-  // --- LOGIKA VIDEO (FIXED: COPY FILE METHOD) ---
+  // --- LOGIKA VIDEO DENGAN FFMPEG NEW (PIXELATED RENDER) ---
   Future<void> _toggleVideo() async {
     if (_isRecording) {
       try {
@@ -177,24 +211,35 @@ class _NokiaAndroidCameraState extends State<NokiaAndroidCamera> {
           _isProcessing = true;
         });
 
-        // 1. Delay singkat agar kamera melepas resource
-        await Future.delayed(const Duration(milliseconds: 800));
-
-        // 2. COPY file ke lokasi AMAN (Application Documents)
+        // 1. Path Input & Output
+        final String inputPath = recorded.path;
         final dir = await getApplicationDocumentsDirectory();
-        final safePath = '${dir.path}/NOKIA_VIDEO_${DateTime.now().millisecondsSinceEpoch}.mp4';
+        final String outputPath = '${dir.path}/BURIK_VID_${DateTime.now().millisecondsSinceEpoch}.mp4';
 
-        final safeFile = await File(recorded.path).copy(safePath);
+        // 2. FFMPEG COMMAND
+        // flags=neighbor: Kunci agar video pixelated/kotak-kotak (tidak smooth)
+        // fps=15: Membuat video agak patah-patah ala HP jadul
+        final String ffmpegCommand = 
+          "-y -i $inputPath -vf \"scale=${_selectedRes.width}:${_selectedRes.height}:flags=neighbor,fps=15\" -c:v libx264 -preset ultrafast -crf 28 -c:a aac $outputPath";
 
-        // 3. SIMPAN KE GALERI dari file yang sudah di-copy
-        await Gal.putVideo(safeFile.path);
+        // 3. Eksekusi FFmpeg
+        await FFmpegKit.execute(ffmpegCommand).then((session) async {
+          final returnCode = await session.getReturnCode();
 
-        _showMsg("Video Nokia Tersimpan!");
-        
-        // Bersihkan file sementara setelah berhasil disimpan ke galeri
-        await File(safeFile.path).delete();
+          if (ReturnCode.isSuccess(returnCode)) {
+            // 4. Simpan hasil render burik ke galeri
+            await Gal.putVideo(outputPath);
+            _showMsg("Video Burik Nokia Tersimpan!");
+          } else {
+            _showMsg("Gagal Render Video Burik");
+          }
+          
+          // Bersihkan cache
+          if (await File(outputPath).exists()) await File(outputPath).delete();
+        });
+
       } catch (e) {
-        _showMsg("Gagal simpan video: $e");
+        _showMsg("Error FFmpeg: $e");
       } finally {
         setState(() => _isProcessing = false);
       }
