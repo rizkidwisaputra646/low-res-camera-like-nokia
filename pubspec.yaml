@@ -43,6 +43,8 @@ dependencies:
   ffmpeg_kit_flutter_new: ^4.1.0
   image_picker: ^1.2.1
   # flutter_launcher_icons: ^0.11.0
+  open_filex: ^4.5.0 # Tambahkan ini
+  video_player: ^2.8.1 # Tambahkan ini jika ingin preview video lebih mantap
 
 dev_dependencies:
   flutter_test:
